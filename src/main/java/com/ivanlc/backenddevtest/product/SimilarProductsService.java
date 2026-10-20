@@ -2,9 +2,10 @@ package com.ivanlc.backenddevtest.product;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -38,23 +39,30 @@ public class SimilarProductsService {
 
     private void fetchBatch(List<String> ids, ProductDetail[] ordered, int start, int end,
             long deadline) {
-        ExecutorCompletionService<IndexedDetail> completion = new ExecutorCompletionService<>(executor);
-        List<Future<IndexedDetail>> submitted = new ArrayList<>(end - start);
+        BlockingQueue<FutureTask<IndexedDetail>> completion = new LinkedBlockingQueue<>();
+        List<FutureTask<IndexedDetail>> submitted = new ArrayList<>(end - start);
         try {
             for (int index = start; index < end; index++) {
                 if (deadline - System.nanoTime() <= 0) {
                     throw new UpstreamTimeoutException("Overall request deadline exceeded");
                 }
                 final int position = index;
-                submitted.add(completion.submit(() ->
-                        new IndexedDetail(position, gateway.findProduct(ids.get(position)))));
+                FutureTask<IndexedDetail> task = new FutureTask<>(() ->
+                        new IndexedDetail(position, gateway.findProduct(ids.get(position)))) {
+                    @Override
+                    protected void done() {
+                        completion.add(this);
+                    }
+                };
+                submitted.add(task);
+                executor.execute(task);
             }
             for (int remaining = end - start; remaining > 0; remaining--) {
                 long waitNanos = deadline - System.nanoTime();
                 if (waitNanos <= 0) {
                     throw new UpstreamTimeoutException("Overall request deadline exceeded");
                 }
-                Future<IndexedDetail> completed = completion.poll(waitNanos, TimeUnit.NANOSECONDS);
+                FutureTask<IndexedDetail> completed = completion.poll(waitNanos, TimeUnit.NANOSECONDS);
                 if (completed == null) {
                     throw new UpstreamTimeoutException("Overall request deadline exceeded");
                 }
@@ -72,9 +80,10 @@ public class SimilarProductsService {
             }
             throw new IllegalStateException("Unexpected detail worker failure", error.getCause());
         } finally {
-            for (Future<IndexedDetail> future : submitted) {
-                if (!future.isDone()) {
-                    future.cancel(true);
+            for (FutureTask<IndexedDetail> task : submitted) {
+                if (!task.isDone()) {
+                    executor.remove(task);
+                    task.cancel(true);
                 }
             }
         }

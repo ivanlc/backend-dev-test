@@ -93,4 +93,62 @@ class SimilarProductsServiceTest {
         assertThatThrownBy(() -> timedService.findSimilarProducts("source"))
                 .isInstanceOf(UpstreamTimeoutException.class);
     }
+
+    @Test
+    void removesQueuedDetailsAfterDeadline() throws Exception {
+        ThreadPoolExecutor limited = new ThreadPoolExecutor(1, 1, 0,
+                TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(1));
+        CountDownLatch workerStarted = new CountDownLatch(1);
+        CountDownLatch releaseWorker = new CountDownLatch(1);
+        limited.execute(() -> {
+            workerStarted.countDown();
+            try {
+                releaseWorker.await();
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        try {
+            assertThat(workerStarted.await(1, TimeUnit.SECONDS)).isTrue();
+            UpstreamProperties shortDeadline = new UpstreamProperties("http://localhost:3001",
+                    Duration.ofMillis(500), Duration.ofSeconds(6), Duration.ofMillis(20), 1, 1, 1);
+            SimilarProductsService timedService = new SimilarProductsService(gateway, limited, shortDeadline);
+            when(gateway.findSimilarIds("source")).thenReturn(List.of("queued"));
+
+            assertThatThrownBy(() -> timedService.findSimilarProducts("source"))
+                    .isInstanceOf(UpstreamTimeoutException.class);
+            assertThat(limited.getQueue()).isEmpty();
+        } finally {
+            releaseWorker.countDown();
+            limited.shutdownNow();
+        }
+    }
+
+    @Test
+    void rejectsWhenSharedQueueIsFull() throws Exception {
+        ThreadPoolExecutor limited = new ThreadPoolExecutor(1, 1, 0,
+                TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(1));
+        CountDownLatch workerStarted = new CountDownLatch(1);
+        CountDownLatch releaseWorker = new CountDownLatch(1);
+        limited.execute(() -> {
+            workerStarted.countDown();
+            try {
+                releaseWorker.await();
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        try {
+            assertThat(workerStarted.await(1, TimeUnit.SECONDS)).isTrue();
+            limited.execute(() -> { });
+            SimilarProductsService loadedService = new SimilarProductsService(gateway, limited, properties);
+            when(gateway.findSimilarIds("source")).thenReturn(List.of("rejected"));
+
+            assertThatThrownBy(() -> loadedService.findSimilarProducts("source"))
+                    .isInstanceOf(UpstreamOverloadedException.class);
+        } finally {
+            releaseWorker.countDown();
+            limited.shutdownNow();
+        }
+    }
 }
