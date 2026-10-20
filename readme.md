@@ -31,3 +31,19 @@ The following topics will be considered:
 - Code clarity and maintainability
 - Performance
 - Resilience
+
+## Implementation
+
+This repository is a fork of [dalogax/backendDevTest](https://github.com/dalogax/backendDevTest).
+The original API contracts, mocks, benchmark assets and Apache 2.0 license are preserved.
+The application uses Java 21, Spring Boot and Maven.
+
+```sh
+mvn test
+mvn spring-boot:run
+```
+
+The application listens on port 5000 by default. `PORT` and `UPSTREAM_BASE_URL`
+override the listener and mock base URL; the latter defaults to
+`http://localhost:3001`. The remaining timeout and concurrency settings are
+documented with the completed implementation.

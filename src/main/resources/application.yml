@@ -1,0 +1,12 @@
+server:
+  port: ${PORT:5000}
+
+app:
+  upstream:
+    base-url: ${UPSTREAM_BASE_URL:http://localhost:3001}
+    connect-timeout: ${UPSTREAM_CONNECT_TIMEOUT:500ms}
+    read-timeout: ${UPSTREAM_READ_TIMEOUT:6s}
+    request-timeout: ${UPSTREAM_REQUEST_TIMEOUT:8s}
+    max-detail-concurrency: ${MAX_DETAIL_CONCURRENCY:64}
+    queue-capacity: ${DETAIL_QUEUE_CAPACITY:1024}
+    per-request-parallelism: ${PER_REQUEST_PARALLELISM:8}
