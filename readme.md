@@ -1,177 +1,100 @@
-# Backend dev technical test
-We want to offer a new feature to our customers showing similar products to the one they are currently seeing. To do this we agreed with our front-end applications to create a new REST API operation that will provide them the product detail of the similar products for a given one. [Here](./similarProducts.yaml) is the contract we agreed.
+# Similar Products API
 
-We already have an endpoint that provides the product Ids similar for a given one. We also have another endpoint that returns the product detail by product Id. [Here](./existingApis.yaml) is the documentation of the existing APIs.
+## Overview
 
-**Create a Spring boot application that exposes the agreed REST API on port 5000.**
+This Spring Boot service exposes `GET /product/{productId}/similar` on port `5000`. It fetches similar product IDs from an existing service, retrieves their details, and returns a JSON array ordered by similarity. An empty upstream ID list returns `[]`.
 
-![Diagram](./assets/diagram.jpg "Diagram")
+This repository is a fork of the [original backend assessment](https://github.com/dalogax/backendDevTest). The original [public OpenAPI contract](./similarProducts.yaml), [upstream API contract](./existingApis.yaml), Docker mocks, k6 assets, and Apache 2.0 license are preserved. Only the application component described by the assessment is implemented here.
 
-Note that _Test_ and _Mocks_ components are given, you must only implement _yourApp_.
+## Tech Stack
 
-## Testing and Self-evaluation
-You can run the same test we will put through your application. You just need to have docker installed.
+- Java 21, Spring Boot 3.5, and Maven
+- Spring Web `RestClient` with the JDK HTTP client
+- JUnit 5, Spring Boot Test, and Mockito
+- Supplied Docker Compose mocks, k6, InfluxDB, and Grafana
 
-First of all, you may need to enable file sharing for the `shared` folder on your docker dashboard -> settings -> resources -> file sharing.
+## Architecture
 
-Then you can start the mocks and other needed infrastructure with the following command.
-```
-docker-compose up -d simulado influxdb grafana
-```
-Check that mocks are working with a sample request to [http://localhost:3001/product/1/similarids](http://localhost:3001/product/1/similarids).
+`SimilarProductsController` exposes the public route. `SimilarProductsService` coordinates the upstream calls through `HttpExistingProductsGateway`:
 
-To execute the test run:
-```
-docker-compose run --rm k6 run scripts/test.js
-```
-Browse [http://localhost:3000/d/Le2Ku9NMk/k6-performance-test](http://localhost:3000/d/Le2Ku9NMk/k6-performance-test) to view the results.
+1. Fetch the ordered IDs from `GET /product/{productId}/similarids`.
+2. Fetch each detail from `GET /product/{id}` using a shared, bounded executor.
+3. Place each result at its original ID position, so completion order cannot change similarity order.
 
-## Evaluation
-The following topics will be considered:
-- Code clarity and maintainability
-- Performance
-- Resilience
+The executor has a fixed worker count and bounded queue. Each incoming request submits at most `PER_REQUEST_PARALLELISM` detail calls in a batch; later batches wait for earlier ones. On failure or deadline expiry, unfinished tasks are cancelled and queued tasks are removed where possible. No database, cache, or retry layer is used.
 
-## Implementation
+The supplied mock returns numeric similar IDs even though `existingApis.yaml` declares strings. Integral IDs are normalized to strings; duplicate IDs are removed while retaining their first position. Detail responses must contain valid `id`, `name`, `price`, and `availability` fields, and the returned ID must match the requested ID.
 
-This repository is a fork of [dalogax/backendDevTest](https://github.com/dalogax/backendDevTest).
-The original API contracts, mocks, benchmark assets and Apache 2.0 license are preserved.
-The application uses Java 21, Spring Boot and Maven.
+## Getting Started
 
-```sh
-mvn test
-mvn spring-boot:run
-```
-
-The application listens on port 5000 by default. `PORT` and `UPSTREAM_BASE_URL`
-override the listener and mock base URL; the latter defaults to
-`http://localhost:3001`. The remaining timeout and concurrency settings are
-listed below.
-
-### Data flow
-
-`SimilarProductsController` exposes `GET /product/{productId}/similar`.
-`SimilarProductsService` first fetches similar IDs through
-`HttpExistingProductsGateway`, then retrieves their details on a shared,
-bounded worker pool. Each result is placed at its original ID position, so
-completion order cannot change similarity order. The gateway validates the
-upstream JSON and maps it to `ProductDetail` without inventing missing values.
-No database, cache, authentication or retry layer is used.
-
-### Run and test
-
-Java 21 and Maven are required. Start the supplied mock service with Docker:
+Install Java 21, Maven, and Docker with Compose. Start the supplied mock and monitoring services:
 
 ```sh
 docker compose up -d simulado influxdb grafana
 curl http://localhost:3001/product/1/similarids
 ```
 
-Start the application in a second terminal, then query it in a third:
+Start the application in another terminal:
 
 ```sh
 mvn spring-boot:run
 ```
 
+Then call the public endpoint:
+
 ```sh
 curl -i http://localhost:5000/product/1/similar
 ```
 
-Run automated tests and build the executable jar with:
+The default upstream URL assumes the application runs on the host. If it runs in a container, set `UPSTREAM_BASE_URL` to an address reachable from that container.
+
+## Configuration
+
+All settings can be overridden with environment variables:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `PORT` | `5000` | HTTP listener |
+| `UPSTREAM_BASE_URL` | `http://localhost:3001` | Existing API base URL |
+| `UPSTREAM_CONNECT_TIMEOUT` | `500ms` | Connection timeout |
+| `UPSTREAM_READ_TIMEOUT` | `6s` | Per-response read timeout |
+| `UPSTREAM_REQUEST_TIMEOUT` | `8s` | Detail orchestration deadline |
+| `MAX_DETAIL_CONCURRENCY` | `256` | Shared detail worker count |
+| `DETAIL_QUEUE_CAPACITY` | `1024` | Shared waiting-task capacity |
+| `PER_REQUEST_PARALLELISM` | `8` | Maximum detail calls submitted per batch |
+
+## Error Handling
+
+The public OpenAPI contract documents `200` and `404`. The additional statuses below are explicit implementation choices for upstream failures. Errors use JSON Problem Details; a failed detail request never produces a partial product array.
+
+| Condition | HTTP response |
+| --- | --- |
+| Successful lookup with no similar IDs | `200 []` |
+| Similar-ID or detail lookup returns 404 | `404` |
+| Other upstream HTTP error, connection failure, or invalid payload | `502` |
+| Upstream read timeout or orchestration deadline | `504` |
+| Detail executor rejects work at capacity | `503` |
+
+Timeouts and queue limits bound resource use, but overload can still produce `503` or `504`. There are no automatic retries.
+
+## Testing & Performance
+
+Run compilation, unit tests, HTTP integration tests, and packaging with:
 
 ```sh
 mvn clean verify
 ```
 
-To run the unchanged upstream load test, keep the application running on the
-host at port 5000, then execute:
+The suite currently passes 23 tests covering response shape, ordering despite out-of-order completion, empty results, upstream failures, timeouts, overload, and task cleanup. Its HTTP integration tests use a local test server and do not require Docker.
+
+With the Docker services and application running, execute the unchanged supplied load script:
 
 ```sh
 docker compose run --rm k6 run scripts/test.js
 ```
 
-For a Docker-hosted application, set `UPSTREAM_BASE_URL` to a hostname that
-resolves to the mock service from that container; the default `localhost:3001`
-is intended for running the application directly on the host.
+Grafana results are available at [the supplied dashboard](http://localhost:3000/d/Le2Ku9NMk/k6-performance-test). The script runs five 200-VU scenarios, including expected 404, 502, and timeout responses.
 
-### Configuration
+In the recorded run, k6 made **11,977 requests** at **178.42 requests/s** with **460 ms mean** and **5.10 s p95** latency overall. Outcomes were **3,601 HTTP 200**, **3,977 HTTP 404**, **3,999 HTTP 502**, **400 HTTP 504**, and **0 HTTP 503**; no observed status was unexpected for its scenario. The slow-detail scenario returned **400/400 HTTP 200** responses, while the very-slow scenario returned **400 HTTP 504** responses.
 
-| Environment variable | Default | Purpose |
-| --- | --- | --- |
-| `PORT` | `5000` | Application listener |
-| `UPSTREAM_BASE_URL` | `http://localhost:3001` | Supplied upstream service |
-| `UPSTREAM_CONNECT_TIMEOUT` | `500ms` | TCP connection limit |
-| `UPSTREAM_READ_TIMEOUT` | `6s` | Per-upstream-response limit |
-| `UPSTREAM_REQUEST_TIMEOUT` | `8s` | Overall orchestration deadline |
-| `MAX_DETAIL_CONCURRENCY` | `256` | Shared active detail workers |
-| `DETAIL_QUEUE_CAPACITY` | `1024` | Shared waiting detail tasks |
-| `PER_REQUEST_PARALLELISM` | `8` | Maximum details in one batch |
-
-The shared pool and bounded queue prevent unbounded task creation. A request
-submits at most eight detail calls at a time. When a batch fails or expires,
-remaining tasks are cancelled and queued tasks are removed. These limits are
-bounded defaults. The 256-worker limit was measured against the supplied
-200-VU k6 script: the slow scenario returned 400/400 HTTP 200 responses,
-compared with 115/400 at the former 64-worker default. The 50-second upstream
-detail still times out by design. These measurements depend on the local
-machine and do not establish a general throughput guarantee.
-
-### Failure policy
-
-The public OpenAPI contract documents 200 and 404. The following additional
-responses are implementation assumptions for unspecified upstream failures.
-Responses use JSON Problem Details and never include partial product arrays.
-
-| Situation | Response |
-| --- | --- |
-| Similar IDs lookup succeeds with `[]` | `200 []` |
-| Similar IDs or detail lookup returns 404 | `404` |
-| Upstream 5xx, other HTTP error, connection failure or malformed JSON | `502` |
-| Read timeout or overall request deadline | `504` |
-| Detail worker queue is full | `503` |
-
-The supplied mock returns numeric similar IDs despite `existingApis.yaml`
-declaring strings. Integral IDs are normalized to strings. Duplicate IDs are
-removed while preserving their first position. Missing fields, invalid field
-types and mismatched product IDs are errors. A failing detail makes the whole
-request fail; there are no retries or partial results.
-
-### Verification and measured load
-
-On 2026-10-21, `mvn clean verify` passed all 23 tests. Unit and HTTP integration
-tests cover normal and empty responses, completion order, 404/5xx/malformed
-responses, timeouts, overload and queued-task cleanup. The integration tests
-use a local HTTP server, so they do not require Docker. The supplied Docker
-mock returned `[2,3,4]` for `/product/1/similarids`, and the running application
-returned the corresponding details in that order with HTTP 200.
-
-The unchanged `shared/k6/test.js` was run with its five 200-VU scenarios. On
-this macOS host, AirTunes already occupied port 5000, so the built application
-ran in a temporary Docker container on port 5000 with
-`UPSTREAM_BASE_URL=http://simulado:80`. An external k6 `hosts` configuration
-resolved the script's `host.docker.internal` to that container. Neither the
-script nor the supplied mocks were modified. These measurements apply to this
-local Docker Desktop setup, which ran the supplied x86 k6 and mock images on
-an ARM host:
-
-| Scenario | HTTP responses | Mean / p95 latency |
-| --- | --- | --- |
-| Normal | 3,201 × 200 | 116 / 174 ms |
-| Missing detail | 3,977 × 404 | 13 / 38 ms |
-| Upstream error | 3,999 × 502 | 13 / 53 ms |
-| Slow detail | 400 × 200 | 5.35 / 6.21 s |
-| Very slow detail | 400 × 504 | 7.25 / 8.01 s |
-
-Overall: 11,977 requests, 178.42 requests/s, mean latency 460 ms and p95
-latency 5.10 s. The response counts were **3,601 HTTP 200, 0 HTTP 503 and
-400 HTTP 504**. The raw non-2xx rate was 69.93%, because the script deliberately
-requests missing, failing and very slow products. Every observed status matched
-its documented scenario; the unexpected-status rate was 0/11,977. The 504s
-came only from the 50-second upstream detail, which exceeds the configured
-timeouts. In this run, the slow scenario returned 400/400 HTTP 200 responses.
-
-The worker pool and queue remain bounded. HTTP 503 is still the defined response
-if the detail queue fills, and HTTP 504 remains possible when a request exceeds
-its deadline under a different or heavier workload. Neither occurred in the
-slow scenario of this measured run. The benchmark does not establish a general
-throughput or availability guarantee.
+These figures describe one local run of the supplied workload, not a general latency or availability guarantee. Different or heavier traffic can fill the bounded queue or exceed the request deadline.
