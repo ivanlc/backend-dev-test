@@ -104,14 +104,18 @@ is intended for running the application directly on the host.
 | `UPSTREAM_CONNECT_TIMEOUT` | `500ms` | TCP connection limit |
 | `UPSTREAM_READ_TIMEOUT` | `6s` | Per-upstream-response limit |
 | `UPSTREAM_REQUEST_TIMEOUT` | `8s` | Overall orchestration deadline |
-| `MAX_DETAIL_CONCURRENCY` | `64` | Shared active detail workers |
+| `MAX_DETAIL_CONCURRENCY` | `256` | Shared active detail workers |
 | `DETAIL_QUEUE_CAPACITY` | `1024` | Shared waiting detail tasks |
 | `PER_REQUEST_PARALLELISM` | `8` | Maximum details in one batch |
 
 The shared pool and bounded queue prevent unbounded task creation. A request
 submits at most eight detail calls at a time. When a batch fails or expires,
 remaining tasks are cancelled and queued tasks are removed. These limits are
-starting values, not load-test-tuned values.
+bounded defaults. The 256-worker limit was measured against the supplied
+200-VU k6 script: the slow scenario returned 400/400 HTTP 200 responses,
+compared with 115/400 at the former 64-worker default. The 50-second upstream
+detail still times out by design. These measurements depend on the local
+machine and do not establish a general throughput guarantee.
 
 ### Failure policy
 
