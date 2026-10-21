@@ -1,4 +1,4 @@
-package com.ivanlc.backenddevtest.product;
+package com.ivanlc.backenddevtest.infrastructure.config;
 
 import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;

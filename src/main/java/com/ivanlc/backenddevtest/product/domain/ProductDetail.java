@@ -1,4 +1,4 @@
-package com.ivanlc.backenddevtest.product;
+package com.ivanlc.backenddevtest.product.domain;
 
 import java.math.BigDecimal;
 

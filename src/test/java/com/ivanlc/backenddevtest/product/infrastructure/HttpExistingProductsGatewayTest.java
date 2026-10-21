@@ -1,10 +1,12 @@
-package com.ivanlc.backenddevtest.product;
+package com.ivanlc.backenddevtest.product.infrastructure;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
+import com.ivanlc.backenddevtest.infrastructure.error.UpstreamPayloadException;
+import com.ivanlc.backenddevtest.product.domain.ProductDetail;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

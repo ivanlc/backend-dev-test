@@ -1,6 +1,9 @@
-package com.ivanlc.backenddevtest.product;
+package com.ivanlc.backenddevtest.product.infrastructure;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.ivanlc.backenddevtest.infrastructure.error.UpstreamPayloadException;
+import com.ivanlc.backenddevtest.product.domain.ExistingProductsGateway;
+import com.ivanlc.backenddevtest.product.domain.ProductDetail;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;

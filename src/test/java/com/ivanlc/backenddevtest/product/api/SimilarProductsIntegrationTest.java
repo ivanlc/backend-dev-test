@@ -1,7 +1,8 @@
-package com.ivanlc.backenddevtest.product;
+package com.ivanlc.backenddevtest.product.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.ivanlc.backenddevtest.product.domain.ProductDetail;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;

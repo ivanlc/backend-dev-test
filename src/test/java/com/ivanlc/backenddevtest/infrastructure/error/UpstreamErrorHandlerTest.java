@@ -1,4 +1,4 @@
-package com.ivanlc.backenddevtest.product;
+package com.ivanlc.backenddevtest.infrastructure.error;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -6,6 +6,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.ivanlc.backenddevtest.product.api.SimilarProductsController;
+import com.ivanlc.backenddevtest.product.application.SimilarProductsService;
 import java.net.SocketTimeoutException;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;

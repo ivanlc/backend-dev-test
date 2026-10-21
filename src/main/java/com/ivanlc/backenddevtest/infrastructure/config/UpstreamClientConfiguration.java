@@ -1,4 +1,4 @@
-package com.ivanlc.backenddevtest.product;
+package com.ivanlc.backenddevtest.infrastructure.config;
 
 import java.net.http.HttpClient;
 import java.util.concurrent.ArrayBlockingQueue;

@@ -1,5 +1,10 @@
-package com.ivanlc.backenddevtest.product;
+package com.ivanlc.backenddevtest.product.application;
 
+import com.ivanlc.backenddevtest.infrastructure.config.UpstreamProperties;
+import com.ivanlc.backenddevtest.infrastructure.error.UpstreamOverloadedException;
+import com.ivanlc.backenddevtest.infrastructure.error.UpstreamTimeoutException;
+import com.ivanlc.backenddevtest.product.domain.ExistingProductsGateway;
+import com.ivanlc.backenddevtest.product.domain.ProductDetail;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;

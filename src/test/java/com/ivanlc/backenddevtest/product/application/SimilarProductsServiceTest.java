@@ -1,4 +1,4 @@
-package com.ivanlc.backenddevtest.product;
+package com.ivanlc.backenddevtest.product.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -6,6 +6,12 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.ivanlc.backenddevtest.infrastructure.config.UpstreamProperties;
+import com.ivanlc.backenddevtest.infrastructure.error.UpstreamOverloadedException;
+import com.ivanlc.backenddevtest.infrastructure.error.UpstreamPayloadException;
+import com.ivanlc.backenddevtest.infrastructure.error.UpstreamTimeoutException;
+import com.ivanlc.backenddevtest.product.domain.ExistingProductsGateway;
+import com.ivanlc.backenddevtest.product.domain.ProductDetail;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.List;

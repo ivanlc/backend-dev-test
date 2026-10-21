@@ -1,4 +1,4 @@
-package com.ivanlc.backenddevtest.product;
+package com.ivanlc.backenddevtest.infrastructure.error;
 
 public class UpstreamPayloadException extends RuntimeException {
 

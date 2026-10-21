@@ -1,5 +1,7 @@
-package com.ivanlc.backenddevtest.product;
+package com.ivanlc.backenddevtest.product.api;
 
+import com.ivanlc.backenddevtest.product.application.SimilarProductsService;
+import com.ivanlc.backenddevtest.product.domain.ProductDetail;
 import java.util.List;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;

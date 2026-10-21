@@ -1,4 +1,4 @@
-package com.ivanlc.backenddevtest.product;
+package com.ivanlc.backenddevtest.infrastructure.error;
 
 import java.net.http.HttpTimeoutException;
 import java.net.SocketTimeoutException;
