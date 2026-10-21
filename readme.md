@@ -80,8 +80,7 @@ curl -i http://localhost:5000/product/1/similar
 Run automated tests and build the executable jar with:
 
 ```sh
-mvn test
-mvn package
+mvn clean verify
 ```
 
 To run the unchanged upstream load test, keep the application running on the
@@ -137,12 +136,42 @@ removed while preserving their first position. Missing fields, invalid field
 types and mismatched product IDs are errors. A failing detail makes the whole
 request fail; there are no retries or partial results.
 
-### Verification and limits
+### Verification and measured load
 
-Unit and HTTP integration tests cover normal and empty responses, completion
-order, 404/5xx/malformed responses, timeout, overload and queued-task cleanup.
-The integration tests use a local HTTP server, so they do not require Docker.
-The supplied k6 scenarios include slow upstream responses, and some requests
-can receive 503 or 504 under their 200-concurrent-user load; the implementation
-does not promise every overloaded request will succeed. Run k6 in an environment
-with a working Docker daemon to measure actual throughput and latency.
+On 2026-10-21, `mvn clean verify` passed all 23 tests. Unit and HTTP integration
+tests cover normal and empty responses, completion order, 404/5xx/malformed
+responses, timeouts, overload and queued-task cleanup. The integration tests
+use a local HTTP server, so they do not require Docker. The supplied Docker
+mock returned `[2,3,4]` for `/product/1/similarids`, and the running application
+returned the corresponding details in that order with HTTP 200.
+
+The unchanged `shared/k6/test.js` was run with its five 200-VU scenarios. On
+this macOS host, AirTunes already occupied port 5000, so the built application
+ran in a temporary Docker container on port 5000 with
+`UPSTREAM_BASE_URL=http://simulado:80`. An external k6 `hosts` configuration
+resolved the script's `host.docker.internal` to that container. Neither the
+script nor the supplied mocks were modified. These measurements apply to this
+local Docker Desktop setup, which ran the supplied x86 k6 and mock images on
+an ARM host:
+
+| Scenario | HTTP responses | Mean / p95 latency |
+| --- | --- | --- |
+| Normal | 3,201 × 200 | 116 / 174 ms |
+| Missing detail | 3,977 × 404 | 13 / 38 ms |
+| Upstream error | 3,999 × 502 | 13 / 53 ms |
+| Slow detail | 400 × 200 | 5.35 / 6.21 s |
+| Very slow detail | 400 × 504 | 7.25 / 8.01 s |
+
+Overall: 11,977 requests, 178.42 requests/s, mean latency 460 ms and p95
+latency 5.10 s. The response counts were **3,601 HTTP 200, 0 HTTP 503 and
+400 HTTP 504**. The raw non-2xx rate was 69.93%, because the script deliberately
+requests missing, failing and very slow products. Every observed status matched
+its documented scenario; the unexpected-status rate was 0/11,977. The 504s
+came only from the 50-second upstream detail, which exceeds the configured
+timeouts. In this run, the slow scenario returned 400/400 HTTP 200 responses.
+
+The worker pool and queue remain bounded. HTTP 503 is still the defined response
+if the detail queue fills, and HTTP 504 remains possible when a request exceeds
+its deadline under a different or heavier workload. Neither occurred in the
+slow scenario of this measured run. The benchmark does not establish a general
+throughput or availability guarantee.
